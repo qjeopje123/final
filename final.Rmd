@@ -1,0 +1,111 @@
+---
+title: "final_homework"
+author: "Nai-Wei-Hsu"
+date: "2017年2月19日"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+#  資料讀取
+```{r}
+train <- read.csv("train.csv")
+```
+
+# 資料框外觀與統計
+```{r}
+str(train)
+```
+利用summary探索資料
+```{r}
+summary(train)
+```
+# 資料清理與補齊
+```{r}
+train <- train[complete.cases(train), ]
+train$Embarked <- as.character(train$Embarked)
+train$Embarked[train$Embarked == ""] <- "S"
+train$Embarked <- factor(train$Embarked)
+```
+# 資料探索
+利用ggplot2探索
+```{r}
+library(ggplot2)
+ggplot_bar_sex <- ggplot(train, aes(x = Sex, y = Survived, fill = Sex)) + geom_bar(stat = "identity")
+```
+# 建立分類模型
+利用SVM測試模型
+```{r}
+# 載入套件
+library(e1071)
+library(magrittr)
+library(dplyr)
+#建立分割資料
+n <- nrow(train)
+set.seed(666)
+sample(n)
+set.seed(666)
+train.train <- train[sample(n)[1:round(0.7*n)],]
+set.seed(666)
+train.test <- train[sample(n)[(round(0.7*n)+1):n],]
+train.test <- train.test[complete.cases(train.test),]
+train.test <- train.test[complete.cases(train.test),]
+#建立模型
+predict.svm <- svm(Survived~Pclass+Sex+Age+SibSp+Parch+Fare+Embarked,data=train.train)
+pred_result <- predict(predict.svm,train.test)
+# 建立函數評估切點
+test.predict=function(a,b){
+  probability <- seq(from=0.4,to=1,by=0.05)
+  n <- nrow(a)
+  TP <- c()
+  length(TP) <- n
+  for(i in 1:length(probability)){
+    a$survived <- 0
+    a[a[,1]>probability[i],]$survived <- 1
+    confusion_matrix <- table(a$survived,b$Survived)
+    accuracy <- sum(diag(confusion_matrix))/sum(confusion_matrix)
+    TP[i] <- accuracy
+    }
+  plot(probability,TP,ylim = c(0.4,1))
+  return(TP)
+}
+# 判斷切點為0.5
+pred_result <- as.data.frame(pred_result)
+test.predict(pred_result,train.test)
+#真實模型
+train.real <- train[complete.cases(train)&train$Embarked!="",]
+train.real$Embarked <- train.real$Embarked%>%
+  as.character()%>%
+  as.factor()
+predict.final <- svm(Survived~Pclass+Sex+Age+SibSp+Parch+Fare+Embarked,data=train.real)
+```
+# 探索未上傳資料並填補遺漏值
+```{r}
+test <- read.csv("test.csv")
+summary(test)
+# 填補遺漏值
+test[is.na(test$Fare),]
+mean.fare <- mean(test[test$Pclass==3,]$Fare,na.rm=TRUE)
+test[is.na(test$Fare),]$Fare <- mean.fare
+mean_age_by_Pclass <- test %>%
+  group_by(Pclass) %>%
+  summarise(mean_age = round(mean(Age, na.rm = TRUE)))
+filter_1 <- is.na(test$Age) & test$Pclass == 1
+filter_2 <- is.na(test$Age) & test$Pclass == 2
+filter_3 <- is.na(test$Age) & test$Pclass == 3
+test[filter_1, ]$Age <- 41
+test[filter_2, ]$Age <- 29
+test[filter_3, ]$Age <- 24
+summary(test)
+```
+# 準備上傳
+```{r}
+result <- predict(predict.final,test)
+x <- as.data.frame(as.numeric(result>0.5))
+gender_submission <- read.csv("gender_submission.csv")
+to_submit <- data.frame(PassengerId=gender_submission$PassengerId,Survived=x[,1])
+#output
+write.csv(to_submit, file = "to_submit3.csv", row.names = FALSE)
+```
+![](C:/Users/qq169/Desktop/kaggle/result.png)
